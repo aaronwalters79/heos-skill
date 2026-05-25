@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 HEOS_HOST = "192.168.1.23"  # Wired HEOS Amp (Patio) — reliable entry point
 HEOS_PORT = 1255
+DEFAULT_PLAYER = ""  # Set to a room name to use when none is specified, e.g. "Living Room"
 
 
 # ── Transport ──────────────────────────────────────────────────────────────────
@@ -57,7 +58,12 @@ def get_players(sock):
     return players
 
 
-def resolve_player(players, name):
+def resolve_player(players, name=None):
+    if not name:
+        if not DEFAULT_PLAYER:
+            names = ", ".join(p["name"] for p in players.values())
+            raise ValueError(f"No player specified and DEFAULT_PLAYER is not set. Available: {names}")
+        name = DEFAULT_PLAYER
     key = name.lower()
     if key in players:
         return players[key]
@@ -117,38 +123,38 @@ def cmd_status(sock, players, args):
 
 
 def cmd_play(sock, players, args):
-    p = resolve_player(players, args[0])
+    p = resolve_player(players, args[0] if args else None)
     resp = send_cmd(sock, f"heos://player/set_play_state?pid={p['pid']}&state=play")
     print(json.dumps({"player": p["name"], "result": resp.get("heos", {}).get("result")}))
 
 
 def cmd_pause(sock, players, args):
-    p = resolve_player(players, args[0])
+    p = resolve_player(players, args[0] if args else None)
     resp = send_cmd(sock, f"heos://player/set_play_state?pid={p['pid']}&state=pause")
     print(json.dumps({"player": p["name"], "result": resp.get("heos", {}).get("result")}))
 
 
 def cmd_stop(sock, players, args):
-    p = resolve_player(players, args[0])
+    p = resolve_player(players, args[0] if args else None)
     resp = send_cmd(sock, f"heos://player/set_play_state?pid={p['pid']}&state=stop")
     print(json.dumps({"player": p["name"], "result": resp.get("heos", {}).get("result")}))
 
 
 def cmd_next(sock, players, args):
-    p = resolve_player(players, args[0])
+    p = resolve_player(players, args[0] if args else None)
     resp = send_cmd(sock, f"heos://player/play_next?pid={p['pid']}")
     print(json.dumps({"player": p["name"], "result": resp.get("heos", {}).get("result")}))
 
 
 def cmd_prev(sock, players, args):
-    p = resolve_player(players, args[0])
+    p = resolve_player(players, args[0] if args else None)
     resp = send_cmd(sock, f"heos://player/play_previous?pid={p['pid']}")
     print(json.dumps({"player": p["name"], "result": resp.get("heos", {}).get("result")}))
 
 
 def cmd_volume(sock, players, args):
-    p = resolve_player(players, args[0])
-    level = int(args[1])
+    p = resolve_player(players, args[0] if len(args) > 1 else None)
+    level = int(args[1] if len(args) > 1 else args[0])
     if not 0 <= level <= 100:
         raise ValueError("Volume must be 0–100")
     resp = send_cmd(sock, f"heos://player/set_volume?pid={p['pid']}&level={level}")
@@ -156,20 +162,20 @@ def cmd_volume(sock, players, args):
 
 
 def cmd_mute(sock, players, args):
-    p = resolve_player(players, args[0])
+    p = resolve_player(players, args[0] if args else None)
     state = args[1] if len(args) > 1 else "toggle"
     resp = send_cmd(sock, f"heos://player/set_mute?pid={p['pid']}&state={state}")
     print(json.dumps({"player": p["name"], "mute": state, "result": resp.get("heos", {}).get("result")}))
 
 
 def cmd_queue(sock, players, args):
-    p = resolve_player(players, args[0])
+    p = resolve_player(players, args[0] if args else None)
     resp = send_cmd(sock, f"heos://player/get_queue?pid={p['pid']}")
     print(json.dumps(resp.get("payload", []), indent=2))
 
 
 def cmd_clear(sock, players, args):
-    p = resolve_player(players, args[0])
+    p = resolve_player(players, args[0] if args else None)
     resp = send_cmd(sock, f"heos://player/clear_queue?pid={p['pid']}")
     print(json.dumps({"player": p["name"], "result": resp.get("heos", {}).get("result")}))
 
@@ -186,8 +192,8 @@ def cmd_favorites(sock, players, _args):
 
 
 def cmd_play_favorite(sock, players, args):
-    p = resolve_player(players, args[0])
-    preset = int(args[1])
+    p = resolve_player(players, args[0] if len(args) > 1 else None)
+    preset = int(args[1] if len(args) > 1 else args[0])
     resp = send_cmd(sock, f"heos://player/play_favorite?pid={p['pid']}&preset={preset}")
     print(json.dumps({"player": p["name"], "preset": preset, "result": resp.get("heos", {}).get("result")}))
 
@@ -230,9 +236,9 @@ def cmd_add(sock, players, args):
 def cmd_stream(sock, players, args):
     # Play a station/stream via browse/play_stream (required for SiriusXM and internet radio)
     # args: player sid mid [name]
-    p = resolve_player(players, args[0])
-    sid, mid = args[1], args[2]
-    name = quote(args[3], safe="") if len(args) > 3 else mid
+    p = resolve_player(players, args[0] if len(args) > 2 else None)
+    sid, mid = (args[1], args[2]) if len(args) > 2 else (args[0], args[1])
+    name = quote(args[3] if len(args) > 3 else (args[2] if len(args) > 2 else mid), safe="")
     resp = send_cmd(sock, f"heos://browse/play_stream?pid={p['pid']}&sid={sid}&mid={mid}&name={name}")
     print(json.dumps({"player": p["name"], "result": resp.get("heos", {}).get("result")}))
 
